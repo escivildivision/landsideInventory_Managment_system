@@ -20,7 +20,20 @@ app.use("/api/products", products);
 app.use("/api/inventory", inventory);
 app.use("/api/transaction", transaction)
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server is running on port ${PORT}`);
+// Root health check endpoint
+app.get("/api", (req, res) => {
+    res.json({ message: "LandsideInventory Backend API running!" });
 });
+
+app.get("/", (req, res) => {
+    res.json({ message: "LandsideInventory Backend API running!" });
+});
+
+if (require.main === module) {
+    const PORT = process.env.PORT || 3000;
+    app.listen(PORT, "0.0.0.0", () => {
+        console.log(`Server is running on port ${PORT}`);
+    });
+}
+
+module.exports = app;
