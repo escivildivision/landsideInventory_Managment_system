@@ -2,8 +2,24 @@ const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
 
-const app = express();
-app.use(cors());
+const allowedOrigins = [
+    "https://landsidefrontend.netlify.app",
+    "http://localhost:5173",
+    "http://localhost:3000"
+];
+
+app.use(cors({
+    origin: function (origin, callback) {
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(null, true);
+        }
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"]
+}));
 app.use(express.json());
 const transaction = require("./routers/Transaction");
 const products = require("./routers/Products");
