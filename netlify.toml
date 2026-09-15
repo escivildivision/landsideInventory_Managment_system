@@ -2,7 +2,12 @@
   base = "Server"
   functions = "netlify/functions"
 
+[functions]
+  included_files = ["node_modules/pdfkit/**/*", "assests/**/*"]
+  external_node_modules = ["pdfkit"]
+
 [[redirects]]
   from = "/*"
   to = "/.netlify/functions/api"
   status = 200
+
