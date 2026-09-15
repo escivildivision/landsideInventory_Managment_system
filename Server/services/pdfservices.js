@@ -437,7 +437,7 @@ function drawProductGroupPages(doc, allProducts, productGroup, productStartIndex
         mx = left + leftColsW;
         for (let i = 0; i < colCount; i++) {
             let val = '';
-            if (localIdx === i && txn.quantity) {
+            if (localIdx === i && (txn.quantity !== undefined && txn.quantity !== null && !isNaN(txn.quantity))) {
                 val = String(txn.quantity);
             }
             drawCell(doc, val, mx, y, matColW, dataRowH, {
@@ -498,13 +498,30 @@ const generateRegisterPDF = (rawProducts = [], rawTransactions = [], options = {
             }
             const allTxns = parseTransactions(rawTransactions);
 
-            // Current month filter
-            const now = new Date();
-            const year = now.getFullYear();
-            const month = now.getMonth();
+            // Determine target year and month (options > latest transaction date > current date)
+            let year, month;
+            if (options.year !== undefined && options.month !== undefined) {
+                year = Number(options.year);
+                month = Number(options.month);
+            } else {
+                // Find the latest valid transaction date, or fallback to current date
+                let latestDate = null;
+                for (const t of allTxns) {
+                    const d = new Date(t.date);
+                    if (!isNaN(d.getTime())) {
+                        if (!latestDate || d > latestDate) {
+                            latestDate = d;
+                        }
+                    }
+                }
+                const targetDate = latestDate || new Date();
+                year = targetDate.getFullYear();
+                month = targetDate.getMonth();
+            }
+
             const currentMonthTxns = filterByMonth(allTxns, year, month);
 
-            // Previous months: everything before current month
+            // Previous months: everything before target month
             const currentMonthStart = new Date(year, month, 1);
             const previousTxns = allTxns.filter(t => {
                 const d = new Date(t.date);
