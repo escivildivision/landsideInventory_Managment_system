@@ -3,8 +3,12 @@
   functions = "netlify/functions"
 
 [functions]
-  included_files = ["node_modules/pdfkit/**/*", "assests/**/*"]
-  external_node_modules = ["pdfkit"]
+  included_files = [
+    "node_modules/pdfkit/**/*",
+    "node_modules/pdfkit/js/font/data/**/*",
+    "assests/**/*"
+  ]
+  node_bundler = "zisi"
 
 [[redirects]]
   from = "/*"

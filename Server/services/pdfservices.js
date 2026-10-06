@@ -306,7 +306,7 @@ function drawPageFooter(doc, colCount, matColW, dateW, descW, leftColsW, pageTot
 /*  DRAW ONE PRODUCT-GROUP PAGE (handles vertical pagination too)      */
 /* ------------------------------------------------------------------ */
 
-function drawProductGroupPages(doc, allProducts, productGroup, productStartIndex, currentMonthTxns, previousTxns, logoPath, pageNum, totalPages) {
+function drawProductGroupPages(doc, allProducts, productGroup, productStartIndex, currentMonthTxns, previousTxns, logoPath, pageNum, totalPages, year, month) {
     const left = MARGIN;
     const colCount = productGroup.length;
     const dataRowH = 17;
@@ -333,9 +333,9 @@ function drawProductGroupPages(doc, allProducts, productGroup, productStartIndex
     }
 
     /* --- Previous Month Balance Row --- */
-    const now = new Date();
+    // Use the passed-in target year/month for the date label
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const firstDayStr = `1-${months[now.getMonth()]}-${now.getFullYear()}`;
+    const firstDayStr = `1-${months[month]}-${year}`;
 
     drawCell(doc, firstDayStr, left, y, dateW, dataRowH, {
         bold: true, fontSize: 8, color: redColor, align: 'center', lineWidth: 0.75
@@ -354,14 +354,100 @@ function drawProductGroupPages(doc, allProducts, productGroup, productStartIndex
     }
     y += dataRowH;
 
-    /* --- Data Rows --- */
+    /* --- Separate opening transactions from the rest & sort by date --- */
+    const openingQty = new Array(colCount).fill(0);   // merged opening per column
+    const nonOpeningTxns = [];
+
+    // Sort all current-month txns by date ascending first
+    const sortedTxns = [...currentMonthTxns].sort((a, b) => {
+        const da = new Date(a.date);
+        const db = new Date(b.date);
+        return da - db;
+    });
+
+    for (const txn of sortedTxns) {
+        const typeStr = (txn.transaction_type || '').toLowerCase();
+        const globalIdx = findProductIndex(allProducts, txn);
+        const localIdx = globalIdx - productStartIndex;
+        if (globalIdx === -1 || localIdx < 0 || localIdx >= colCount) continue;
+
+        if (typeStr === 'opening') {
+            openingQty[localIdx] += txn.quantity;
+        } else {
+            nonOpeningTxns.push(txn);
+        }
+    }
+
+    /* --- Draw single merged "Opening stock" row --- */
+    const hasAnyOpening = openingQty.some(q => q !== 0);
     const totalReceived = new Array(colCount).fill(0);
     const totalIssued = new Array(colCount).fill(0);
 
-    for (const txn of currentMonthTxns) {
+    // Add opening amounts into totalReceived so footer balance is correct
+    for (let i = 0; i < colCount; i++) {
+        totalReceived[i] += openingQty[i];
+    }
+
+    if (hasAnyOpening) {
+        // Check overflow before drawing
+        if (y + dataRowH > maxY) {
+            const pageTotal = new Array(colCount).fill(0);
+            const pageBalance = new Array(colCount).fill(0);
+            for (let i = 0; i < colCount; i++) {
+                pageTotal[i] = totalReceived[i] - totalIssued[i];
+                pageBalance[i] = prevBalance[i] + totalReceived[i] - totalIssued[i];
+            }
+            drawPageFooter(doc, colCount, matColW, dateW, descW, leftColsW, pageTotal, pageBalance);
+            doc.addPage({ size: 'A4', layout: 'landscape', margin: MARGIN });
+            const header = drawPageHeader(doc, productGroup, pageNum, totalPages, logoPath);
+            y = header.y;
+        }
+
+        drawCell(doc, '', left, y, dateW, dataRowH, { fontSize: 7.5, align: 'center' });
+        drawCell(doc, 'Opening stock', left + dateW, y, descW, dataRowH, { fontSize: 7.5, align: 'left' });
+        mx = left + leftColsW;
+        for (let i = 0; i < colCount; i++) {
+            const val = openingQty[i] !== 0 ? String(openingQty[i]) : '';
+            drawCell(doc, val, mx, y, matColW, dataRowH, {
+                fontSize: 8, bold: Boolean(val), align: 'center',
+            });
+            mx += matColW;
+        }
+        y += dataRowH;
+    }
+
+    /* --- Group nonOpeningTxns by (date + job_slip_no + transaction_type) --- */
+    // Transactions sharing the same date, job slip, and type collapse into one row.
+    const rowGroups = [];
+    const rowGroupIndex = {}; // key -> index in rowGroups
+
+    for (const txn of nonOpeningTxns) {
+        const globalIdx = findProductIndex(allProducts, txn);
+        const localIdx = globalIdx - productStartIndex;
+        if (globalIdx === -1 || localIdx < 0 || localIdx >= colCount) continue;
+
+        // Key: date|job_slip_no|type  — group these together into one row
+        const key = `${txn.date}|${txn.job_slip_no || ''}|${txn.transaction_type}`;
+        if (rowGroupIndex[key] === undefined) {
+            rowGroupIndex[key] = rowGroups.length;
+            rowGroups.push({
+                date: txn.date,
+                job_slip_no: txn.job_slip_no || '',
+                transaction_type: txn.transaction_type,
+                remarks: txn.remarks,
+                qtys: new Array(colCount).fill(0), // quantity per product column
+            });
+        }
+        const group = rowGroups[rowGroupIndex[key]];
+        group.qtys[localIdx] += txn.quantity;
+        // carry the first non-empty remark
+        if (!group.remarks && txn.remarks) group.remarks = txn.remarks;
+    }
+
+    /* --- Data Rows (one row per group) --- */
+    for (const group of rowGroups) {
         // Check if we need a new page (vertical overflow)
         if (y + dataRowH > maxY) {
-            // Draw footer on current page
             const pageTotal = new Array(colCount).fill(0);
             const pageBalance = new Array(colCount).fill(0);
             for (let i = 0; i < colCount; i++) {
@@ -376,28 +462,25 @@ function drawProductGroupPages(doc, allProducts, productGroup, productStartIndex
             y = header.y;
         }
 
-        const typeStr = (txn.transaction_type || '').toLowerCase();
-        const remarksStr = (txn.remarks || '').toLowerCase();
+        const typeStr = (group.transaction_type || '').toLowerCase();
+        const remarksStr = (group.remarks || '').toLowerCase();
 
-        const isReceived = typeStr.includes('received') || remarksStr.includes('received') || typeStr.includes('new stock') || remarksStr.includes('new stock');
+        const isReceived = typeStr.includes('received') || remarksStr.includes('received')
+            || typeStr.includes('new stock') || remarksStr.includes('new stock');
         const rowFill = isReceived ? '#FFFF00' : null;
         const textColor = isReceived ? redColor : '#000000';
 
-        const dateStr = txn.date;
-
         // Format Job Slip No.
-        let jsNoStr = txn.job_slip_no;
+        let jsNoStr = group.job_slip_no;
         if (jsNoStr && !isNaN(Number(jsNoStr))) {
             jsNoStr = String(Number(jsNoStr)).padStart(2, '0');
         }
 
-        // Description formatting
-        let desc = txn.remarks;
+        // Description
+        let desc = group.remarks;
         if (!desc) {
             if (isReceived) {
                 desc = jsNoStr ? `Meterial Received vide J.s no ${jsNoStr}` : 'Meterial Received';
-            } else if (typeStr.includes('opening')) {
-                desc = 'Opening stock';
             } else {
                 desc = jsNoStr ? `Material issued vide J.s no ${jsNoStr}` : 'Material issued';
             }
@@ -407,24 +490,16 @@ function drawProductGroupPages(doc, allProducts, productGroup, productStartIndex
             }
         }
 
-        // Find which column in this group the product belongs to
-        const globalIdx = findProductIndex(allProducts, txn);
-        const localIdx = globalIdx - productStartIndex;
-
-        // Skip transactions that do not belong to any product on this page/group
-        if (globalIdx === -1 || localIdx < 0 || localIdx >= colCount) {
-            continue;
-        }
-
         // Track totals for this group's products
-        if (isReceived || typeStr.includes('opening')) {
-            totalReceived[localIdx] += txn.quantity;
-        } else {
-            totalIssued[localIdx] += txn.quantity;
+        for (let i = 0; i < colCount; i++) {
+            if (group.qtys[i] !== 0) {
+                if (isReceived) totalReceived[i] += group.qtys[i];
+                else totalIssued[i] += group.qtys[i];
+            }
         }
 
         // Draw Date cell
-        drawCell(doc, dateStr, left, y, dateW, dataRowH, {
+        drawCell(doc, group.date, left, y, dateW, dataRowH, {
             fontSize: 7.5, fill: rowFill, bold: isReceived, color: textColor, align: 'center',
         });
 
@@ -436,10 +511,7 @@ function drawProductGroupPages(doc, allProducts, productGroup, productStartIndex
         // Draw Product quantity cells
         mx = left + leftColsW;
         for (let i = 0; i < colCount; i++) {
-            let val = '';
-            if (localIdx === i && (txn.quantity !== undefined && txn.quantity !== null && !isNaN(txn.quantity))) {
-                val = String(txn.quantity);
-            }
+            const val = group.qtys[i] !== 0 ? String(group.qtys[i]) : '';
             drawCell(doc, val, mx, y, matColW, dataRowH, {
                 fontSize: 8, fill: rowFill, bold: isReceived || Boolean(val), color: textColor, align: 'center',
             });
@@ -487,7 +559,6 @@ const generateRegisterPDF = (rawProducts = [], rawTransactions = [], options = {
                 size: 'A4',
                 layout: 'landscape',
                 margin: MARGIN,
-                bufferPages: true,
             });
             const chunks = [];
 
@@ -498,25 +569,19 @@ const generateRegisterPDF = (rawProducts = [], rawTransactions = [], options = {
             }
             const allTxns = parseTransactions(rawTransactions);
 
-            // Determine target year and month (options > latest transaction date > current date)
+            // Determine target year and month:
+            // Always use the CURRENT calendar month so that previous-month data
+            // (including opening stock entered in past months) goes into
+            // "Previous Month Balance", and only the current month's new
+            // transactions appear as individual data rows.
             let year, month;
             if (options.year !== undefined && options.month !== undefined) {
                 year = Number(options.year);
                 month = Number(options.month);
             } else {
-                // Find the latest valid transaction date, or fallback to current date
-                let latestDate = null;
-                for (const t of allTxns) {
-                    const d = new Date(t.date);
-                    if (!isNaN(d.getTime())) {
-                        if (!latestDate || d > latestDate) {
-                            latestDate = d;
-                        }
-                    }
-                }
-                const targetDate = latestDate || new Date();
-                year = targetDate.getFullYear();
-                month = targetDate.getMonth();
+                const now = new Date();
+                year = now.getFullYear();
+                month = now.getMonth();
             }
 
             const currentMonthTxns = filterByMonth(allTxns, year, month);
@@ -528,9 +593,14 @@ const generateRegisterPDF = (rawProducts = [], rawTransactions = [], options = {
                 return d < currentMonthStart;
             });
 
-            const defaultLogoPath = path.join(__dirname, '..', 'assests', 'LogoPAA.png');
-            const logoPath = options.logoPath || defaultLogoPath;
-            const resolvedLogo = fs.existsSync(logoPath) ? logoPath : null;
+            // Try multiple base paths to support both local and serverless (Netlify) environments
+            const possibleLogoPaths = [
+                options.logoPath,
+                path.join(__dirname, '..', 'assests', 'LogoPAA.png'),
+                path.join(process.cwd(), 'assests', 'LogoPAA.png'),
+                path.join(process.cwd(), 'Server', 'assests', 'LogoPAA.png'),
+            ].filter(Boolean);
+            const resolvedLogo = possibleLogoPaths.find(p => fs.existsSync(p)) || null;
 
             doc.on('data', (chunk) => chunks.push(chunk));
             doc.on('end', () => resolve(Buffer.concat(chunks)));
@@ -566,11 +636,15 @@ const generateRegisterPDF = (rawProducts = [], rawTransactions = [], options = {
                     previousTxns,
                     resolvedLogo,
                     pg + 1,
-                    totalPages
+                    totalPages,
+                    year,
+                    month
                 );
             }
 
             doc.end();
+            // Note: do NOT call doc.flushPages() when bufferPages is false (default)
+            // pages are written to stream immediately as they are added
         } catch (error) {
             reject(error);
         }

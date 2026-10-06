@@ -46,10 +46,13 @@ export async function addInventory(inventory) {
     });
 }
 
-export async function downloadInventoryPdf(category = "") {
-    const url = category && category !== "All"
-        ? `${API_URL}/inventory/pdf?category=${encodeURIComponent(category)}`
-        : `${API_URL}/inventory/pdf`;
+export async function downloadInventoryPdf(category = "", year, month) {
+    const params = new URLSearchParams();
+    if (category && category !== "All") params.set("category", category);
+    if (year !== undefined) params.set("year", String(year));
+    if (month !== undefined) params.set("month", String(month));
+    const queryStr = params.toString();
+    const url = `${API_URL}/inventory/pdf${queryStr ? "?" + queryStr : ""}`;
     const res = await fetch(url);
     if (!res.ok) {
         let message = "Unable to generate inventory PDF.";
@@ -100,10 +103,13 @@ export async function deleteTransaction(id) {
     return request(`/transaction/delete/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
-export async function downloadTransactionPdf(category = "") {
-    const url = category && category !== "All"
-        ? `${API_URL}/transaction/pdf?category=${encodeURIComponent(category)}`
-        : `${API_URL}/transaction/pdf`;
+export async function downloadTransactionPdf(category = "", year, month) {
+    const params = new URLSearchParams();
+    if (category && category !== "All") params.set("category", category);
+    if (year !== undefined) params.set("year", String(year));
+    if (month !== undefined) params.set("month", String(month));
+    const queryStr = params.toString();
+    const url = `${API_URL}/transaction/pdf${queryStr ? "?" + queryStr : ""}`;
     const res = await fetch(url);
     if (!res.ok) {
         let message = "Unable to generate register PDF.";
@@ -117,3 +123,9 @@ export async function downloadTransactionPdf(category = "") {
     }
     return res.blob();
 }
+
+
+// Measuremnets
+export const fetchMeasurements = async () => {
+    return request("/measurements/get")
+};

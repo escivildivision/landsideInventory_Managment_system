@@ -374,6 +374,10 @@ const UpdateTransaction = async (req, res) => {
 const generateTransactionPdf = async (req, res) => {
     try {
         const category = req.query.category;
+        // Accept optional year and month query params (month is 0-based internally)
+        const year = req.query.year !== undefined ? Number(req.query.year) : undefined;
+        const month = req.query.month !== undefined ? Number(req.query.month) : undefined;
+
         // Fetch both Products and Transactions in parallel
         const [productsRes, txnRes] = await Promise.all([
             sheets.spreadsheets.values.get({
@@ -389,7 +393,7 @@ const generateTransactionPdf = async (req, res) => {
         const pdf = await generateRegisterPDF(
             productsRes.data.values || [],
             txnRes.data.values || [],
-            { category }
+            { category, year, month }
         );
 
         res.set({

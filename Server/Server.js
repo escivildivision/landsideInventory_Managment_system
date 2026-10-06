@@ -28,9 +28,7 @@ const transaction = require("./routers/Transaction");
 const products = require("./routers/Products");
 const categories = require("./routers/Categories");
 const inventory = require("./routers/Inventory");
-
-const { sheets, SPREADSHEET_ID } = require("./config/googleSheets");
-
+const measurements = require("./routers/UnitRoutes")
 // --- Routes ---
 
 // GET all categories
@@ -38,6 +36,7 @@ app.use("/api/categories", categories);
 app.use("/api/products", products);
 app.use("/api/inventory", inventory);
 app.use("/api/transaction", transaction)
+app.use("/api/measurements", measurements)
 
 // Root health check endpoint
 app.get("/api", (req, res) => {

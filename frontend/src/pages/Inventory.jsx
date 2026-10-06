@@ -30,6 +30,11 @@ export default function Inventory() {
     const [error, setError] = useState("");
     const [generatingPdf, setGeneratingPdf] = useState(false);
 
+    // PDF month/year selector — default to current month
+    const _now = new Date();
+    const [pdfYear, setPdfYear] = useState(_now.getFullYear());
+    const [pdfMonth, setPdfMonth] = useState(_now.getMonth() + 1); // 1-based for display
+
     // Fetch inventory
     const loadInventory = useCallback(async () => {
         try {
@@ -48,12 +53,14 @@ export default function Inventory() {
         try {
             setGeneratingPdf(true);
             setError("");
-            const blob = await downloadInventoryPdf(categoryFilter);
+            // pass 0-based month to the API
+            const blob = await downloadInventoryPdf(categoryFilter, pdfYear, pdfMonth - 1);
             const url = URL.createObjectURL(blob);
             const link = document.createElement("a");
             link.href = url;
+            const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
             const catSuffix = categoryFilter && categoryFilter !== "All" ? `-${categoryFilter.replace(/[^a-zA-Z0-9]/g, "_")}` : "";
-            link.download = `material-consumption-register${catSuffix}.pdf`;
+            link.download = `register-${monthNames[pdfMonth - 1]}-${pdfYear}${catSuffix}.pdf`;
             link.click();
             URL.revokeObjectURL(url);
         } catch (err) {
@@ -179,6 +186,29 @@ export default function Inventory() {
                         <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
                         Refresh
                     </button>
+
+                    <div className="flex items-center gap-2 bg-white/5 border border-white/[0.08] rounded-xl px-3 py-1.5">
+                        <FileDown size={15} className="text-indigo-400 shrink-0" />
+                        <select
+                            value={pdfMonth}
+                            onChange={(e) => setPdfMonth(Number(e.target.value))}
+                            className="bg-transparent text-xs text-slate-200 outline-none cursor-pointer"
+                        >
+                            {["January", "February", "March", "April", "May", "June",
+                                "July", "August", "September", "October", "November", "December"
+                            ].map((m, i) => (
+                                <option key={i} value={i + 1} className="bg-dark-800 text-slate-100">{m}</option>
+                            ))}
+                        </select>
+                        <input
+                            type="number"
+                            min="2020"
+                            max="2099"
+                            value={pdfYear}
+                            onChange={(e) => setPdfYear(Number(e.target.value))}
+                            className="bg-transparent text-xs text-slate-200 outline-none w-14 text-center"
+                        />
+                    </div>
 
                     <button
                         onClick={handleGeneratePdf}

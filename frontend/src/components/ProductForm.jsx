@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { fetchCategories, addCategory, addProduct } from "../services/api";
+import { fetchCategories, addCategory, addProduct, fetchMeasurements } from "../services/api";
 import { Plus, Check, Loader2, X, ExternalLink } from "lucide-react";
 
 export default function ProductForm({ stayAfterSave = false }) {
@@ -23,48 +23,45 @@ export default function ProductForm({ stayAfterSave = false }) {
     const [newCatName, setNewCatName] = useState("");
     const [addingCat, setAddingCat] = useState(false);
     const [catError, setCatError] = useState("");
+    const [measurements, setMeasurements] = useState([]);
 
-    const commonUnits = [
-        "Nos",
-        "Ton",
-        "Pairs",
-        "Sheets",
-        "Bags",
-        "CFT",
-        "Sq. Ft.",
-        "Feet",
-        "RFt",
-        "Kg",
-        "Pkt",
-        "No",
-        "Roll",
-        "K",
-        "Set",
-        "ltr",
-        "Custom..."
-    ];
 
-    const loadCategoryList = async () => {
+    const loadFormData = async () => {
         try {
             setLoadingCategories(true);
-            const catRows = await fetchCategories();
+
+            const [catRows, measurementData] = await Promise.all([
+                fetchCategories(),
+                fetchMeasurements()
+            ]);
+
+            setMeasurements(measurementData);
+            // Categories
             if (catRows && catRows.length > 1) {
                 const [, ...catData] = catRows;
-                const parsed = catData.map((row) => ({ id: row[0], name: row[1] })).filter(c => c.name);
-                setCategories(parsed);
-                if (parsed.length > 0 && !category) {
-                    setCategory(parsed[0].name);
+
+                const parsedCategories = catData
+                    .map((row) => ({
+                        id: row[0],
+                        name: row[1]
+                    }))
+                    .filter((c) => c.name);
+
+                setCategories(parsedCategories);
+
+                if (parsedCategories.length > 0 && !category) {
+                    setCategory(parsedCategories[0].name);
                 }
             }
         } catch (err) {
-            console.error("Failed to fetch categories:", err);
+            console.error("Failed to load form data:", err);
         } finally {
             setLoadingCategories(false);
         }
-    };
+    }
 
     useEffect(() => {
-        loadCategoryList();
+        loadFormData();
     }, []);
 
     const handleCreateCategory = async (e) => {
@@ -82,7 +79,7 @@ export default function ProductForm({ stayAfterSave = false }) {
             setNewCatName("");
 
             // Reload categories and select the newly created category
-            await loadCategoryList();
+            await loadFormData();
             if (created && created.name) {
                 setCategory(created.name);
             } else {
@@ -234,7 +231,7 @@ export default function ProductForm({ stayAfterSave = false }) {
                         onChange={(e) => setUnit(e.target.value)}
                         className="w-full bg-white/5 border border-white/[0.06] rounded-xl px-4 py-3 text-slate-100 text-sm font-sans outline-none focus:border-indigo-500/50 cursor-pointer"
                     >
-                        {commonUnits.map((u) => (
+                        {measurements.map((u) => (
                             <option key={u} value={u} className="bg-dark-800 text-slate-100">
                                 {u}
                             </option>
