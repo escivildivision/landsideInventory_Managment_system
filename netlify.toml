@@ -5,7 +5,7 @@
 [functions]
   included_files = [
     "node_modules/pdfkit/**/*",
-    "node_modules/pdfkit/js/font/data/**/*",
+    "node_modules/pdfkit/js/data/**/*",
     "assests/**/*"
   ]
   node_bundler = "zisi"
