@@ -682,10 +682,6 @@ const generateRegisterPDF = (rawProducts = [], rawTransactions = [], options = {
 
             const totalPages = productGroups.length;
 
-            // ---- DRAWING TEST: if this shows up, basic PDFKit works ----
-            doc.fontSize(14).fillColor('#000000').font('Helvetica-Bold');
-            doc.text(`PDF TEST OK - Products:${products.length} Txns:${matchedTxns.length}`, 12, 12, { lineBreak: false });
-            // ---- END DRAWING TEST ----
 
             for (let pg = 0; pg < productGroups.length; pg++) {
                 if (pg > 0) {
