@@ -616,6 +616,21 @@ const generateRegisterPDF = (rawProducts = [], rawTransactions = [], options = {
             }
             const allTxns = parseTransactions(rawTransactions);
 
+            // ---- DEBUG LOGGING (safe to keep in production) ----
+            console.log('[PDF-DEBUG] rawProducts rows:', (rawProducts || []).length);
+            console.log('[PDF-DEBUG] rawTransactions rows:', (rawTransactions || []).length);
+            console.log('[PDF-DEBUG] products after parse+filter:', products.length);
+            console.log('[PDF-DEBUG] allTxns after parse:', allTxns.length);
+            // Show first 5 date strings so we can see the exact format stored in Sheets
+            const sampleDates = allTxns.slice(0, 5).map(t => t.date);
+            console.log('[PDF-DEBUG] sample date strings:', JSON.stringify(sampleDates));
+            // Show what parseDate produces for those samples
+            sampleDates.forEach(d => {
+                const parsed = parseDate(d);
+                console.log(`[PDF-DEBUG]   parseDate("${d}") => ${parsed} | valid=${!isNaN(parsed.getTime())}`);
+            });
+            // ---- END DEBUG LOGGING ----
+
             // Determine target year and month:
             // Always use the CURRENT calendar month so that previous-month data
             // (including opening stock entered in past months) goes into
@@ -631,7 +646,9 @@ const generateRegisterPDF = (rawProducts = [], rawTransactions = [], options = {
                 month = now.getMonth();
             }
 
+            console.log(`[PDF-DEBUG] target year=${year} month=${month} (0-based)`);
             const currentMonthTxns = filterByMonth(allTxns, year, month);
+            console.log('[PDF-DEBUG] currentMonthTxns:', currentMonthTxns.length);
 
             // Previous months: everything before target month
             const currentMonthStart = new Date(year, month, 1);
