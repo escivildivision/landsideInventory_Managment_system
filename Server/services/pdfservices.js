@@ -616,26 +616,17 @@ const generateRegisterPDF = (rawProducts = [], rawTransactions = [], options = {
             }
             const allTxns = parseTransactions(rawTransactions);
 
-            // ---- DEBUG LOGGING (safe to keep in production) ----
+            // ---- DEBUG LOGGING ----
             console.log('[PDF-DEBUG] rawProducts rows:', (rawProducts || []).length);
             console.log('[PDF-DEBUG] rawTransactions rows:', (rawTransactions || []).length);
+            console.log('[PDF-DEBUG] category filter:', options.category || 'none');
             console.log('[PDF-DEBUG] products after parse+filter:', products.length);
+            // Show first 5 product IDs and names
+            console.log('[PDF-DEBUG] sample products:', JSON.stringify(products.slice(0, 5).map(p => ({ id: p.id, name: p.name, category: p.category }))));
             console.log('[PDF-DEBUG] allTxns after parse:', allTxns.length);
-            // Show first 5 date strings so we can see the exact format stored in Sheets
-            const sampleDates = allTxns.slice(0, 5).map(t => t.date);
-            console.log('[PDF-DEBUG] sample date strings:', JSON.stringify(sampleDates));
-            // Show what parseDate produces for those samples
-            sampleDates.forEach(d => {
-                const parsed = parseDate(d);
-                console.log(`[PDF-DEBUG]   parseDate("${d}") => ${parsed} | valid=${!isNaN(parsed.getTime())}`);
-            });
             // ---- END DEBUG LOGGING ----
 
-            // Determine target year and month:
-            // Always use the CURRENT calendar month so that previous-month data
-            // (including opening stock entered in past months) goes into
-            // "Previous Month Balance", and only the current month's new
-            // transactions appear as individual data rows.
+            // Determine target year and month
             let year, month;
             if (options.year !== undefined && options.month !== undefined) {
                 year = Number(options.year);
@@ -649,6 +640,11 @@ const generateRegisterPDF = (rawProducts = [], rawTransactions = [], options = {
             console.log(`[PDF-DEBUG] target year=${year} month=${month} (0-based)`);
             const currentMonthTxns = filterByMonth(allTxns, year, month);
             console.log('[PDF-DEBUG] currentMonthTxns:', currentMonthTxns.length);
+            // Show first 5 transaction product_ids and names
+            console.log('[PDF-DEBUG] sample txns:', JSON.stringify(currentMonthTxns.slice(0, 5).map(t => ({ pid: t.product_id, name: t.product_name, cat: t.category, type: t.transaction_type, qty: t.quantity }))));
+            // Count how many current-month txns actually match a product in our list
+            const matchedTxns = currentMonthTxns.filter(t => findProductIndex(products, t) >= 0);
+            console.log('[PDF-DEBUG] matchedTxns (matched to product list):', matchedTxns.length);
 
             // Previous months: everything before target month
             const currentMonthStart = new Date(year, month, 1);
