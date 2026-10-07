@@ -682,24 +682,34 @@ const generateRegisterPDF = (rawProducts = [], rawTransactions = [], options = {
 
             const totalPages = productGroups.length;
 
+            // ---- DRAWING TEST: if this shows up, basic PDFKit works ----
+            doc.fontSize(14).fillColor('#000000').font('Helvetica-Bold');
+            doc.text(`PDF TEST OK - Products:${products.length} Txns:${matchedTxns.length}`, 12, 12, { lineBreak: false });
+            // ---- END DRAWING TEST ----
+
             for (let pg = 0; pg < productGroups.length; pg++) {
                 if (pg > 0) {
                     doc.addPage({ size: 'A4', layout: 'landscape', margin: MARGIN });
                 }
-
-                drawProductGroupPages(
-                    doc,
-                    products,
-                    productGroups[pg].products,
-                    productGroups[pg].startIndex,
-                    currentMonthTxns,
-                    previousTxns,
-                    resolvedLogo,
-                    pg + 1,
-                    totalPages,
-                    year,
-                    month
-                );
+                try {
+                    console.log(`[PDF-DEBUG] drawing page ${pg + 1} of ${productGroups.length}, products in group: ${productGroups[pg].products.length}`);
+                    drawProductGroupPages(
+                        doc,
+                        products,
+                        productGroups[pg].products,
+                        productGroups[pg].startIndex,
+                        currentMonthTxns,
+                        previousTxns,
+                        resolvedLogo,
+                        pg + 1,
+                        totalPages,
+                        year,
+                        month
+                    );
+                    console.log(`[PDF-DEBUG] page ${pg + 1} drawn OK`);
+                } catch (drawErr) {
+                    console.error(`[PDF-DEBUG] ERROR drawing page ${pg + 1}:`, drawErr.message, drawErr.stack);
+                }
             }
 
             doc.end();
