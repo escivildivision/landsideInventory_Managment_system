@@ -61,11 +61,58 @@ function parseTransactions(rawRows) {
     })).filter(t => t.remarks.toLowerCase() !== 'test' && t.product_name.toLowerCase() !== 'test' && t.remarks.toLowerCase() !== 'testing');
 }
 
+/**
+ * Robustly parse a date string that may be in several formats:
+ *   - YYYY-MM-DD  (ISO, always safe)
+ *   - DD-MMM-YYYY (e.g. 15-Sep-2026) – Google Sheets serial-converted
+ *   - DD/MM/YYYY  (e.g. 15/09/2026)
+ *   - DD-MM-YYYY  (e.g. 15-09-2026)
+ * Falls back to native Date parsing as a last resort.
+ * Returns a Date object (may be Invalid Date if nothing worked).
+ */
+function parseDate(raw) {
+    if (!raw) return new Date(NaN);
+    const s = String(raw).trim();
+
+    // 1. YYYY-MM-DD  (ISO – always works everywhere)
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+        return new Date(s + 'T00:00:00');
+    }
+
+    // 2. DD-MMM-YYYY  e.g. 15-Sep-2026
+    const dmyMon = s.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/);
+    if (dmyMon) {
+        const MONTHS = {
+            jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
+            jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11
+        };
+        const m = MONTHS[dmyMon[2].toLowerCase()];
+        if (m !== undefined) {
+            return new Date(Number(dmyMon[3]), m, Number(dmyMon[1]));
+        }
+    }
+
+    // 3. DD/MM/YYYY  e.g. 15/09/2026
+    const dmySlash = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (dmySlash) {
+        return new Date(Number(dmySlash[3]), Number(dmySlash[2]) - 1, Number(dmySlash[1]));
+    }
+
+    // 4. DD-MM-YYYY  e.g. 15-09-2026
+    const dmyDash = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+    if (dmyDash) {
+        return new Date(Number(dmyDash[3]), Number(dmyDash[2]) - 1, Number(dmyDash[1]));
+    }
+
+    // 5. Native fallback (may return Invalid Date on Linux for ambiguous strings)
+    return new Date(s);
+}
+
 /** Filter transactions to a specific month */
 function filterByMonth(txns, year, month) {
     return txns.filter(t => {
-        const d = new Date(t.date);
-        return d.getFullYear() === year && d.getMonth() === month;
+        const d = parseDate(t.date);
+        return !isNaN(d.getTime()) && d.getFullYear() === year && d.getMonth() === month;
     });
 }
 
@@ -360,8 +407,8 @@ function drawProductGroupPages(doc, allProducts, productGroup, productStartIndex
 
     // Sort all current-month txns by date ascending first
     const sortedTxns = [...currentMonthTxns].sort((a, b) => {
-        const da = new Date(a.date);
-        const db = new Date(b.date);
+        const da = parseDate(a.date);
+        const db = parseDate(b.date);
         return da - db;
     });
 
@@ -589,8 +636,8 @@ const generateRegisterPDF = (rawProducts = [], rawTransactions = [], options = {
             // Previous months: everything before target month
             const currentMonthStart = new Date(year, month, 1);
             const previousTxns = allTxns.filter(t => {
-                const d = new Date(t.date);
-                return d < currentMonthStart;
+                const d = parseDate(t.date);
+                return !isNaN(d.getTime()) && d < currentMonthStart;
             });
 
             // Try multiple base paths to support both local and serverless (Netlify) environments
