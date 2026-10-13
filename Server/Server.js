@@ -23,7 +23,22 @@ app.use(cors({
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"]
 }));
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+
+// Fallback: Netlify/serverless may deliver the body as a raw string.
+// If express.json() didn't parse it, try manually.
+app.use((req, res, next) => {
+    if (req.body === undefined || (typeof req.body === "string" && req.body.length > 0)) {
+        try {
+            req.body = JSON.parse(req.body || "{}");
+        } catch (e) {
+            req.body = {};
+        }
+    }
+    next();
+});
+
 const transaction = require("./routers/Transaction");
 const products = require("./routers/Products");
 const categories = require("./routers/Categories");
