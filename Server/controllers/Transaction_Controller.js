@@ -174,7 +174,6 @@ const AddNewTransaction = async (req, res) => {
             job_slip_no
         } = req.body;
 
-
         // Get existing IDs
         const idResponse = await sheets.spreadsheets.values.get({
             spreadsheetId: SPREADSHEET_ID,
@@ -213,14 +212,17 @@ const AddNewTransaction = async (req, res) => {
             }
         });
 
-        // Sync inventory for this product
-        await syncInventoryForProduct(product_id);
-
+        // Respond immediately — don't wait for inventory sync to avoid Netlify timeout
         res.status(201).json({
             success: true,
             message: "Transaction added successfully",
             data: response.data
         });
+
+        // Sync inventory in the background (after response is already sent)
+        syncInventoryForProduct(product_id).catch(err =>
+            console.error("Background inventory sync error:", err.message)
+        );
 
 
     }
@@ -286,12 +288,15 @@ const DeleteTransaction = async (req, res) => {
             },
         });
 
-        // Sync inventory after deletion
-        if (deletedProductId) {
-            await syncInventoryForProduct(deletedProductId);
-        }
-
+        // Respond immediately, then sync inventory in the background
         res.status(200).json({ success: true, message: `Transaction with id ${id} deleted successfully` });
+
+        // Sync inventory in the background after response is sent
+        if (deletedProductId) {
+            syncInventoryForProduct(deletedProductId).catch(err =>
+                console.error("Background inventory sync error (delete):", err.message)
+            );
+        }
     } catch (error) {
         console.error("Error deleting transaction:", error.message);
         res.status(500).json({ success: false, error: error.message });
@@ -351,19 +356,24 @@ const UpdateTransaction = async (req, res) => {
             requestBody: { values },
         });
 
-        // Sync inventory for the current product
-        await syncInventoryForProduct(product_id);
-
-        // If product was changed, also sync the old product
-        if (oldProductId && String(oldProductId).trim() !== String(product_id).trim()) {
-            await syncInventoryForProduct(oldProductId);
-        }
-
+        // Respond immediately, then sync inventory in the background
         res.status(200).json({
             success: true,
             message: "Transaction updated successfully",
             data: updateResponse.data,
         });
+
+        // Sync inventory in the background after response is sent
+        syncInventoryForProduct(product_id).catch(err =>
+            console.error("Background inventory sync error (update):", err.message)
+        );
+
+        // If product was changed, also sync the old product
+        if (oldProductId && String(oldProductId).trim() !== String(product_id).trim()) {
+            syncInventoryForProduct(oldProductId).catch(err =>
+                console.error("Background inventory sync error (old product):", err.message)
+            );
+        }
     } catch (error) {
         console.error("Error updating transaction:", error.message);
         res.status(500).json({ success: false, error: error.message });

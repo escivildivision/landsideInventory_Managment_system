@@ -8,6 +8,7 @@
     "assests/**/*"
   ]
   node_bundler = "zisi"
+  timeout = 26
 
 [[redirects]]
   from = "/*"
