@@ -39,17 +39,23 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-// Layer 3: Final fallback — if body is still a raw string, parse it manually
-// On Netlify, serverless-http may set req.body to the raw JSON string even after
-// express.json() runs, so we must always re-parse if it's a string.
+// Layer 3: Final fallback — Netlify serverless delivers the body as a raw Buffer
+// (confirmed from function logs: INFO <Buffer 7b 22 64 61 74 65 22...>).
+// We must convert Buffer → string → JSON, and also handle plain string bodies.
 app.use((req, res, next) => {
-    if (typeof req.body === "string") {
+    if (Buffer.isBuffer(req.body)) {
+        try {
+            req.body = JSON.parse(req.body.toString("utf8"));
+        } catch (e) {
+            req.body = {};
+        }
+    } else if (typeof req.body === "string" && req.body.length > 0) {
         try {
             req.body = JSON.parse(req.body);
         } catch (e) {
             req.body = {};
         }
-    } else if (req.body === undefined) {
+    } else if (!req.body) {
         req.body = {};
     }
     next();
