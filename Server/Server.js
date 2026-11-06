@@ -41,18 +41,17 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 // Layer 3: Final fallback — if body is still a raw string, parse it manually
 app.use((req, res, next) => {
-    if (req.body === undefined || (typeof req.body === "string" && req.body.length > 0)) {
 
-        if (typeof req.body === "string" && req.body.length > 0) {
+    if (typeof req.body === "string" && req.body.length > 0) {
 
 
-            try {
-                req.body = JSON.parse(req.body || "{}");
-            } catch (e) {
-                req.body = {};
-            }
+        try {
+            req.body = JSON.parse(req.body || "{}");
+        } catch (e) {
+            req.body = {};
         }
     }
+
     next();
 });
 

@@ -185,6 +185,9 @@ const AddNewTransaction = async (req, res) => {
             job_slip_no
         } = req.body || {};
 
+
+        console.log(req.body)
+
         // Guard: reject if body was not parsed (serverless body parsing failure)
         if (!product_id || !date || !transaction_type) {
             return res.status(400).json({
@@ -232,12 +235,15 @@ const AddNewTransaction = async (req, res) => {
 
         await queueSync(product_id);
 
+
+
         return res.status(201).json({
             success: true,
             message: "Transaction added successfully",
             data: response.data,
         });
 
+        console.log(response.data)
 
 
     }
