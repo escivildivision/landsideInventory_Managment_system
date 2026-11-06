@@ -5,6 +5,16 @@ const { generateRegisterPDF } = require("../services/pdfservices");
  * Recalculate inventory for a product by aggregating ALL its transactions.
  * Upserts a single row in the Inventory sheet for the given product_id.
  */
+// Runs inventory syncs one after another to avoid race conditions
+let syncQueue = Promise.resolve();
+function queueSync(productId) {
+    const sync = syncQueue.then(() => syncInventoryForProduct(productId));
+    syncQueue = sync.catch((err) => console.error("Queued sync error:", err.message));
+    return sync;
+}
+
+
+
 async function syncInventoryForProduct(productId) {
     try {
         // 1. Read all transactions
@@ -120,6 +130,7 @@ async function syncInventoryForProduct(productId) {
         console.log(`Inventory synced for product ${productId}: Opening=${opening}, Received=${received}, Issued=${issued}, Closing=${closing}`);
     } catch (error) {
         console.error(`Error syncing inventory for product ${productId}:`, error.message);
+        throw error;
     }
 }
 
@@ -140,7 +151,7 @@ const getTransactionById = async (req, res) => {
     try {
         const response = await sheets.spreadsheets.values.get({
             spreadsheetId: SPREADSHEET_ID,
-            range: "Transcations!A2:I",
+            range: "Transcations!A2:J",
         });
         const target = String(req.params.id).trim();
         const transaction = (response.data.values || []).find(
@@ -172,7 +183,16 @@ const AddNewTransaction = async (req, res) => {
             quantity,
             remarks,
             job_slip_no
-        } = req.body;
+        } = req.body || {};
+
+        // Guard: reject if body was not parsed (serverless body parsing failure)
+        if (!product_id || !date || !transaction_type) {
+            return res.status(400).json({
+                success: false,
+                error: "Missing required fields. Body may not have been parsed correctly.",
+                received_body: req.body,
+            });
+        }
 
         // Get existing IDs
         const idResponse = await sheets.spreadsheets.values.get({
@@ -207,27 +227,22 @@ const AddNewTransaction = async (req, res) => {
             range: "Transcations!A:J",
             valueInputOption: "RAW",
             insertDataOption: "INSERT_ROWS",
-            requestBody: {
-                values: values
-            }
+            requestBody: { values },
         });
 
-        // Respond immediately — don't wait for inventory sync to avoid Netlify timeout
-        res.status(201).json({
+        await queueSync(product_id);
+
+        return res.status(201).json({
             success: true,
             message: "Transaction added successfully",
-            data: response.data
+            data: response.data,
         });
 
-        // Sync inventory in the background (after response is already sent)
-        syncInventoryForProduct(product_id).catch(err =>
-            console.error("Background inventory sync error:", err.message)
-        );
 
 
     }
     catch (error) {
-        console.error("Error reading transactions:", error.message);
+        console.error("Error adding transaction:", error.message);
         res.status(500).json({ success: false, error: error.message });
     }
 }
@@ -288,15 +303,12 @@ const DeleteTransaction = async (req, res) => {
             },
         });
 
-        // Respond immediately, then sync inventory in the background
-        res.status(200).json({ success: true, message: `Transaction with id ${id} deleted successfully` });
-
-        // Sync inventory in the background after response is sent
+        // Sync inventory before responding so the table is current after deletion.
         if (deletedProductId) {
-            syncInventoryForProduct(deletedProductId).catch(err =>
-                console.error("Background inventory sync error (delete):", err.message)
-            );
+            await queueSync(deletedProductId);
         }
+
+        res.status(200).json({ success: true, message: `Transaction with id ${id} deleted successfully` });
     } catch (error) {
         console.error("Error deleting transaction:", error.message);
         res.status(500).json({ success: false, error: error.message });
@@ -332,12 +344,10 @@ const UpdateTransaction = async (req, res) => {
             return res.status(404).json({ success: false, message: "Transaction not found" });
         }
 
-        // Save old product_id in case product was changed
-        const oldProductId = rows[rowIndex][3];
-
-        const sheetRowNumber = rowIndex + 2;
+        const oldTransaction = rows[rowIndex];
+        const oldProductId = oldTransaction[3];
         const values = [[
-            rows[rowIndex][0],
+            oldTransaction[0],
             date,
             job_slip_no || '',
             product_id,
@@ -345,35 +355,29 @@ const UpdateTransaction = async (req, res) => {
             category,
             unit,
             transaction_type,
-            quantity,
-            remarks,
+            Number(quantity) || 0,
+            remarks || '',
         ]];
 
-        const updateResponse = await sheets.spreadsheets.values.update({
+        const sheetRowNumber = rowIndex + 2;
+        const saveResponse = await sheets.spreadsheets.values.update({
             spreadsheetId: SPREADSHEET_ID,
             range: `Transcations!A${sheetRowNumber}:J${sheetRowNumber}`,
             valueInputOption: "RAW",
             requestBody: { values },
         });
 
-        // Respond immediately, then sync inventory in the background
+        // Sync BEFORE responding so the work isn't cut off on serverless
+        await queueSync(product_id);
+        if (oldProductId && String(oldProductId).trim() !== String(product_id).trim()) {
+            await queueSync(oldProductId);
+        }
+
         res.status(200).json({
             success: true,
             message: "Transaction updated successfully",
-            data: updateResponse.data,
+            data: saveResponse.data,
         });
-
-        // Sync inventory in the background after response is sent
-        syncInventoryForProduct(product_id).catch(err =>
-            console.error("Background inventory sync error (update):", err.message)
-        );
-
-        // If product was changed, also sync the old product
-        if (oldProductId && String(oldProductId).trim() !== String(product_id).trim()) {
-            syncInventoryForProduct(oldProductId).catch(err =>
-                console.error("Background inventory sync error (old product):", err.message)
-            );
-        }
     } catch (error) {
         console.error("Error updating transaction:", error.message);
         res.status(500).json({ success: false, error: error.message });

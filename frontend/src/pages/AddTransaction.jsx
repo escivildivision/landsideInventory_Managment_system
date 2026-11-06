@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowLeftRight, Save, Loader2, Check, PackageCheck, AlertCircle, Plus, Trash2, Search } from "lucide-react";
+import { ArrowLeft, ArrowLeftRight, Save, Loader2, Check, PackageCheck, AlertCircle, Plus, Trash2, Search, X } from "lucide-react";
 
 /* ── Searchable Product Dropdown ─────────────────────────────────────── */
-function ProductSearchSelect({ products, value, onChange, disabled, placeholder }) {
+function ProductSearchSelect({ products, value, onChange, disabled, placeholder, getStock }) {
     const [query, setQuery] = useState("");
     const [open, setOpen] = useState(false);
     const wrapRef = useRef(null);
@@ -57,78 +57,78 @@ function ProductSearchSelect({ products, value, onChange, disabled, placeholder 
                 <Search size={14} className={`shrink-0 ${open ? "text-indigo-500" : "text-gray-400"}`} />
             </button>
 
-            {/* Dropdown */}
-            {open && (
-                <div
-                    className="absolute z-50 mt-1.5 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden"
-                    style={{ minWidth: "280px", left: 0 }}
-                >
-                    {/* Search input */}
-                    <div className="p-2 border-b border-gray-100">
-                        <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-100 transition-all">
-                            <Search size={13} className="text-indigo-500 shrink-0" />
-                            <input
-                                ref={inputRef}
-                                type="text"
-                                value={query}
-                                onChange={e => setQuery(e.target.value)}
-                                placeholder="Search by name or ID…"
-                                className="flex-1 bg-transparent text-gray-800 text-sm outline-none placeholder-gray-400 min-w-0"
-                            />
-                            {query && (
-                                <button
-                                    type="button"
-                                    onClick={() => { setQuery(""); inputRef.current?.focus(); }}
-                                    className="text-gray-400 hover:text-gray-600 text-xs leading-none cursor-pointer"
-                                >✕</button>
-                            )}
-                        </div>
-                        {products.length > 0 && (
-                            <p className="mt-1 text-[10px] text-gray-400 px-1">
-                                {filtered.length} of {products.length} product{products.length !== 1 ? "s" : ""}
-                            </p>
-                        )}
-                    </div>
-
-                    {/* List */}
-                    <ul className="max-h-56 overflow-y-auto py-1">
-                        {filtered.length === 0 ? (
-                            <li className="px-4 py-4 text-xs text-gray-400 italic text-center">
-                                No products match &quot;{query}&quot;
-                            </li>
-                        ) : filtered.map(p => (
-                            <li
-                                key={p.id}
-                                onClick={() => handleSelect(p)}
-                                className={`mx-1 mb-0.5 px-3 py-2 rounded-lg text-sm cursor-pointer flex items-center gap-2.5 transition-all
-                                    ${p.id === value
-                                        ? "bg-indigo-50 border border-indigo-200"
-                                        : "hover:bg-gray-50 border border-transparent"
-                                    }`}
-                            >
-                                <span className="shrink-0 text-[10px] font-bold text-gray-400 bg-gray-100 border border-gray-200 rounded px-1.5 py-0.5 min-w-[2.2rem] text-center">
-                                    {p.id}
-                                </span>
-                                <span className={`flex-1 font-medium truncate ${p.id === value ? "text-indigo-700" : "text-gray-700"}`}>
-                                    {p.name}
-                                </span>
-                                <span className="shrink-0 text-[10px] text-gray-400 bg-gray-100 border border-gray-200 rounded-full px-2 py-0.5">
-                                    {p.unit}
-                                </span>
-                                {p.id === value && (
-                                    <span className="shrink-0 text-indigo-500 text-[11px] font-bold">✓</span>
-                                )}
-                            </li>
-                        ))}
-                    </ul>
-                </div>
+          {/* Dropdown */}
+{open && (
+    <div
+        className="absolute z-50 mt-1.5 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden"
+        style={{ width: "400px", left: 0 }} // Changed from minWidth to width
+    >
+        {/* Search input */}
+        <div className="p-2 border-b border-gray-100">
+            <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 focus-within:border-indigo-400 focus-within:ring-2 focus-within:ring-indigo-100 transition-all">
+                <Search size={12} className="text-indigo-500 shrink-0" />
+                <input
+                    ref={inputRef}
+                    type="text"
+                    value={query}
+                    onChange={e => setQuery(e.target.value)}
+                    placeholder="Search…"
+                    className="flex-1 bg-transparent text-gray-800 text-xs outline-none placeholder-gray-400 min-w-0"
+                />
+                {query && (
+                    <button
+                        type="button"
+                        onClick={() => { setQuery(""); inputRef.current?.focus(); }}
+                        className="text-gray-400 hover:text-gray-600 text-xs leading-none cursor-pointer"
+                    >✕</button>
+                )}
+            </div>
+            {products.length > 0 && (
+                <p className="mt-1 text-[10px] text-gray-400 px-1">
+                    {filtered.length} of {products.length}
+                </p>
             )}
+        </div>
+
+        {/* List */}
+        <ul className="max-h-56 overflow-y-auto py-1">
+            {filtered.length === 0 ? (
+                <li className="px-3 py-3 text-xs text-gray-400 italic text-center">
+                    No matches
+                </li>
+            ) : filtered.map(p => (
+                <li
+                    key={p.id}
+                    onClick={() => handleSelect(p)}
+                    className={`mx-1 mb-0.5 px-2 py-1.5 rounded-lg text-xs cursor-pointer flex items-center gap-2 transition-all
+                        ${p.id === value
+                            ? "bg-indigo-50 border border-indigo-200"
+                            : "hover:bg-gray-50 border border-transparent"
+                        }`}
+                >
+                    <span className="shrink-0 text-[9px] font-bold text-gray-400 bg-gray-100 border border-gray-200 rounded px-1 py-0.5 text-center">
+                        {p.id}
+                    </span>
+                    <span className={`flex-1 font-medium truncate min-w-0 ${p.id === value ? "text-indigo-700" : "text-gray-700"}`}>
+                        {p.name}
+                    </span>
+                    <span className="shrink-0 text-[9px] text-gray-500 bg-gray-100 border border-gray-200 rounded-full px-1.5 py-0.5">
+                        {getStock ? getStock(p.id) : 0} {p.unit}
+                    </span>
+                    {p.id === value && (
+                        <span className="shrink-0 text-indigo-500 text-[10px] font-bold">✓</span>
+                    )}
+                </li>
+            ))}
+        </ul>
+    </div>
+)}
         </div>
     );
 }
 
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { addTransaction, fetchCategories, fetchInventory, fetchProducts, fetchTransaction, updateTransaction } from "../services/api";
+import { addProduct, addTransaction, fetchCategories, fetchInventory, fetchProducts, fetchTransaction, updateTransaction } from "../services/api";
 
 // Convert Excel serial number to YYYY-MM-DD if needed
 function formatDateForInput(raw) {
@@ -165,7 +165,7 @@ export default function AddTransaction() {
         }
         return {
             date: new Date().toISOString().slice(0, 10),
-            type: "Received",
+            type: "Issued",
             job_slip_no: "",
             remarks: "",
         };
@@ -191,11 +191,25 @@ export default function AddTransaction() {
             }
             : blankRow()
     );
+    const [originalTransaction, setOriginalTransaction] = useState(() =>
+        editingTransaction
+            ? {
+                productId: String(editingTransaction.productId || ""),
+                type: editingTransaction.type || "",
+                quantity: Number(editingTransaction.quantity || editingTransaction.received || editingTransaction.issued || editingTransaction.opening) || 0,
+            }
+            : null
+    );
 
     const [products, setProducts] = useState([]);
     const [categories, setCategories] = useState([]);
     const [inventoryMap, setInventoryMap] = useState({});
     const [status, setStatus] = useState({ loading: false, error: "", success: "" });
+    const [newProductRow, setNewProductRow] = useState(null);
+    const [newProductName, setNewProductName] = useState("");
+    const [newProductUnit, setNewProductUnit] = useState("Nos");
+    const [newProductError, setNewProductError] = useState("");
+    const [savingNewProduct, setSavingNewProduct] = useState(false);
 
     // ── Load reference data ─────────────────────────────────────────────────
     useEffect(() => {
@@ -250,6 +264,11 @@ export default function AddTransaction() {
                 type: row[7] || "Received",
                 remarks: row[9] || "",
             });
+            setOriginalTransaction({
+                productId: String(row[3] || ""),
+                type: row[7] || "",
+                quantity: Number(row[8]) || 0,
+            });
             setEditProduct({
                 category: row[5] || "",
                 product_id: row[3] || "",
@@ -262,10 +281,33 @@ export default function AddTransaction() {
         );
     }, [id, editingTransaction]);
 
+    // ── Stock helper ────────────────────────────────────────────────────────
+    // While editing, the Inventory closing balance already includes the row being
+    // edited. Undo that row's effect so the number shown is the stock as it would
+    // be WITHOUT this transaction.
+    function getAvailableStock(productId) {
+        const base = inventoryMap[String(productId).trim()] ?? 0;
+        if (!id || !originalTransaction) return base;
+        if (String(originalTransaction.productId).trim() !== String(productId).trim()) return base;
+
+        const oldType = String(originalTransaction.type).trim().toLowerCase();
+        const oldQty = originalTransaction.quantity;
+        if (oldType === "issued") return base + oldQty;
+        if (oldType === "received" || oldType === "opening") return base - oldQty;
+        return base;
+    }
+
     // ── Shared field handler ────────────────────────────────────────────────
     function updateShared(e) {
         const { name, value } = e.target;
-        setShared((s) => ({ ...s, [name]: value }));
+        setShared((s) => {
+            const next = { ...s, [name]: value };
+            if (name === "type") {
+                if (value === "Issued") next.remarks = "";      // Issued: job slip only
+                else next.job_slip_no = "";                      // Received/Opening: remarks only
+            }
+            return next;
+        });
     }
 
     // ── Row helpers ─────────────────────────────────────────────────────────
@@ -303,6 +345,80 @@ export default function AddTransaction() {
         ));
     }
 
+    function openNewProduct(rowIndex) {
+        setNewProductRow(rowIndex);
+        setNewProductName("");
+        setNewProductUnit("Nos");
+        setNewProductError("");
+    }
+
+    async function handleCreateProduct() {
+        const row = rows[newProductRow];
+        if (!row?.category) {
+            setNewProductError("Select a category before adding a product.");
+            return;
+        }
+        if (!newProductName.trim()) {
+            setNewProductError("Product name is required.");
+            return;
+        }
+        if (!newProductUnit.trim()) {
+            setNewProductError("Unit of measurement is required.");
+            return;
+        }
+
+        try {
+            setSavingNewProduct(true);
+            setNewProductError("");
+            const created = await addProduct({
+                category: row.category,
+                name: newProductName.trim(),
+                unit: newProductUnit.trim(),
+            });
+
+            const productRows = await fetchProducts();
+            if (!Array.isArray(productRows)) {
+                throw new Error("Product was added, but the product list could not be refreshed.");
+            }
+            const refreshedCategoryProducts = productRows.slice(1)
+                .map((productRow) => ({
+                    id: productRow[0] || "",
+                    category: productRow[1] || "",
+                    name: productRow[2] || "",
+                    unit: productRow[3] || "",
+                }))
+                .filter((product) => product.category.toLowerCase() === row.category.toLowerCase());
+
+            setProducts((current) => [
+                ...current.filter((product) => product.category.toLowerCase() !== row.category.toLowerCase()),
+                ...refreshedCategoryProducts,
+            ]);
+
+            const newProduct = refreshedCategoryProducts.find((product) =>
+                created?.id ? product.id === created.id : product.name.toLowerCase() === newProductName.trim().toLowerCase()
+            );
+            if (!newProduct) {
+                throw new Error("Product was added, but it was not found in the refreshed category.");
+            }
+
+            setRows((current) => current.map((productRow, index) => index !== newProductRow
+                ? productRow
+                : {
+                    ...productRow,
+                    product_id: newProduct.id,
+                    product_name: newProduct.name,
+                    category: newProduct.category,
+                    unit: newProduct.unit,
+                }
+            ));
+            setNewProductRow(null);
+        } catch (err) {
+            setNewProductError(err.message || "Unable to add product.");
+        } finally {
+            setSavingNewProduct(false);
+        }
+    }
+
     // ── Edit-mode product field handlers ────────────────────────────────────
     function selectEditCategory(e) {
         const cat = e.target.value;
@@ -325,7 +441,8 @@ export default function AddTransaction() {
             if (isNaN(qty) || qty <= 0) return setStatus({ loading: false, error: "Please enter a valid quantity > 0.", success: "" });
 
             if (shared.type === "Issued") {
-                const stock = inventoryMap[String(editProduct.product_id).trim()] ?? 0;
+                // Stock without the row being edited
+                const stock = getAvailableStock(editProduct.product_id);
                 if (stock <= 0) return setStatus({ loading: false, error: `No stock available for "${editProduct.product_name}".`, success: "" });
                 if (qty > stock) return setStatus({ loading: false, error: `Quantity (${qty}) exceeds available stock (${stock} ${editProduct.unit}).`, success: "" });
             }
@@ -423,7 +540,7 @@ export default function AddTransaction() {
 
             <form onSubmit={handleSubmit} className="space-y-6">
 
-                {/* ── SHARED FIELDS (Date, Type, Job Slip, Remarks) ── */}
+                {/* ── SHARED FIELDS (Date, Type, Job Slip / Remarks) ── */}
                 <div className="bg-dark-800/80 border border-white/[0.06] rounded-2xl p-6 sm:p-8">
                     <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-5">
                         Common Details{!id && <span className="text-slate-500 font-normal normal-case tracking-normal ml-2">— applies to all products below</span>}
@@ -447,25 +564,29 @@ export default function AddTransaction() {
                             </select>
                         </div>
 
-                        {/* Job Slip No */}
-                        <div>
-                            <label className="block text-sm font-medium text-slate-300 mb-2">
-                                Job Slip No. <span className="text-xs text-slate-500">(Optional)</span>
-                            </label>
-                            <input type="text" name="job_slip_no" value={shared.job_slip_no} onChange={updateShared}
-                                placeholder="e.g. 02, 04, 18"
-                                className="w-full bg-white/5 border border-white/[0.06] rounded-xl px-4 py-3 text-slate-100 text-sm outline-none focus:border-indigo-500/50" />
-                        </div>
+                        {/* Job Slip No: only for Issued */}
+                        {shared.type === "Issued" && (
+                            <div>
+                                <label className="block text-sm font-medium text-slate-300 mb-2">
+                                    Job Slip No. <span className="text-xs text-slate-500">(Optional)</span>
+                                </label>
+                                <input type="text" name="job_slip_no" value={shared.job_slip_no} onChange={updateShared}
+                                    placeholder="e.g. 02, 04, 18"
+                                    className="w-full bg-white/5 border border-white/[0.06] rounded-xl px-4 py-3 text-slate-100 text-sm outline-none focus:border-indigo-500/50" />
+                            </div>
+                        )}
 
-                        {/* Remarks */}
-                        <div>
-                            <label className="block text-sm font-medium text-slate-300 mb-2">
-                                Remarks <span className="text-xs text-slate-500">(Optional)</span>
-                            </label>
-                            <input type="text" name="remarks" value={shared.remarks} onChange={updateShared}
-                                placeholder="e.g. Material Received vide MB# 1875 Page 43"
-                                className="w-full bg-white/5 border border-white/[0.06] rounded-xl px-4 py-3 text-slate-100 text-sm outline-none focus:border-indigo-500/50" />
-                        </div>
+                        {/* Remarks: only for Received / Opening */}
+                        {shared.type !== "Issued" && (
+                            <div>
+                                <label className="block text-sm font-medium text-slate-300 mb-2">
+                                    Remarks <span className="text-xs text-slate-500">(Optional)</span>
+                                </label>
+                                <input type="text" name="remarks" value={shared.remarks} onChange={updateShared}
+                                    placeholder="e.g. Material Received vide MB# 1875 Page 43"
+                                    className="w-full bg-white/5 border border-white/[0.06] rounded-xl px-4 py-3 text-slate-100 text-sm outline-none focus:border-indigo-500/50" />
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -494,10 +615,11 @@ export default function AddTransaction() {
                                         const product = products.find(pr => pr.id === pid);
                                         setEditProduct(p => ({ ...p, product_id: product?.id || "", product_name: product?.name || "", category: product?.category || p.category, unit: product?.unit || "" }));
                                     }}
+                                    getStock={getAvailableStock}
                                     disabled={!editProduct.category}
                                 />
                                 {editProduct.product_id && (() => {
-                                    const stock = inventoryMap[String(editProduct.product_id).trim()] ?? 0;
+                                    const stock = getAvailableStock(editProduct.product_id);
                                     return (
                                         <div className="mt-2 flex items-center gap-1.5 text-xs font-semibold">
                                             <PackageCheck size={14} className={stock > 0 ? "text-emerald-400" : "text-rose-400"} />
@@ -517,7 +639,7 @@ export default function AddTransaction() {
                                     className="w-full bg-white/5 border border-white/[0.06] rounded-xl px-4 py-3 text-slate-100 text-sm outline-none focus:border-indigo-500/50" />
                                 {shared.type === "Issued" && editProduct.product_id && (
                                     <p className="mt-1 text-xs text-amber-400/90 font-medium">
-                                        Max: {inventoryMap[String(editProduct.product_id).trim()] ?? 0} {editProduct.unit}
+                                        Max: {getAvailableStock(editProduct.product_id)} {editProduct.unit}
                                     </p>
                                 )}
                             </div>
@@ -542,10 +664,6 @@ export default function AddTransaction() {
                                     {rows.length}
                                 </span>
                             </h3>
-                            <button type="button" onClick={addRow}
-                                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-all cursor-pointer">
-                                <Plus size={15} /> Add Product
-                            </button>
                         </div>
 
                         <div className="space-y-4">
@@ -591,7 +709,16 @@ export default function AddTransaction() {
                                                     onChange={(pid) => selectRowProduct(idx, pid)}
                                                     disabled={!row.category}
                                                     placeholder={row.category ? "-- Product --" : "-- Select Category --"}
+                                                    getStock={(productId) => inventoryMap[String(productId).trim()] ?? 0}
                                                 />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => openNewProduct(idx)}
+                                                    disabled={!row.category}
+                                                    className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-indigo-400 hover:text-indigo-300 disabled:text-slate-600 disabled:cursor-not-allowed cursor-pointer"
+                                                >
+                                                    <Plus size={13} /> Add catalog product
+                                                </button>
                                                 {stock !== null && (
                                                     <div className="mt-1 flex items-center gap-1 text-xs font-semibold">
                                                         <PackageCheck size={12} className={stock > 0 ? "text-emerald-400" : "text-rose-400"} />
@@ -624,6 +751,12 @@ export default function AddTransaction() {
                                 );
                             })}
                         </div>
+                        <div className="flex justify-center pt-1">
+                            <button type="button" onClick={addRow}
+                                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold border border-indigo-500/30 text-indigo-300 hover:bg-indigo-500/10 transition-all cursor-pointer">
+                                <Plus size={15} /> Add Product
+                            </button>
+                        </div>
                     </div>
                 )}
 
@@ -643,6 +776,75 @@ export default function AddTransaction() {
                     </button>
                 </div>
             </form>
+            {newProductRow !== null && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                    <div className="relative w-full max-w-md rounded-2xl border border-white/10 bg-dark-800 p-6 shadow-2xl">
+                        <button
+                            type="button"
+                            onClick={() => setNewProductRow(null)}
+                            disabled={savingNewProduct}
+                            className="absolute right-4 top-4 text-slate-400 hover:text-slate-200 disabled:opacity-50"
+                            aria-label="Close"
+                        >
+                            <X size={18} />
+                        </button>
+                        <h3 className="mb-1 text-xl font-bold text-slate-100">Add Catalog Product</h3>
+                        <p className="mb-5 text-sm text-slate-400">
+                            New product in <span className="font-semibold text-indigo-300">{rows[newProductRow]?.category}</span>
+                        </p>
+                        {newProductError && (
+                            <div className="mb-4 rounded-xl border border-rose-500/20 bg-rose-500/10 p-3 text-sm text-rose-400">
+                                {newProductError}
+                            </div>
+                        )}
+                        <div className="space-y-4">
+                            <div>
+                                <label className="mb-2 block text-sm font-medium text-slate-300">Product Name</label>
+                                <input
+                                    type="text"
+                                    value={newProductName}
+                                    onChange={(event) => setNewProductName(event.target.value)}
+                                    onKeyDown={(event) => {
+                                        if (event.key === "Enter") event.preventDefault();
+                                    }}
+                                    autoFocus
+                                    className="w-full rounded-xl border border-white/[0.08] bg-white/5 px-4 py-3 text-sm text-slate-100 outline-none focus:border-indigo-500/50"
+                                />
+                            </div>
+                            <div>
+                                <label className="mb-2 block text-sm font-medium text-slate-300">Unit of Measurement</label>
+                                <input
+                                    type="text"
+                                    value={newProductUnit}
+                                    onChange={(event) => setNewProductUnit(event.target.value)}
+                                    onKeyDown={(event) => {
+                                        if (event.key === "Enter") event.preventDefault();
+                                    }}
+                                    className="w-full rounded-xl border border-white/[0.08] bg-white/5 px-4 py-3 text-sm text-slate-100 outline-none focus:border-indigo-500/50"
+                                />
+                            </div>
+                            <div className="flex justify-end gap-3 pt-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setNewProductRow(null)}
+                                    disabled={savingNewProduct}
+                                    className="rounded-xl border border-white/[0.08] bg-white/5 px-4 py-2.5 text-sm font-semibold text-slate-300 hover:bg-white/10 disabled:opacity-50"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleCreateProduct}
+                                    disabled={savingNewProduct}
+                                    className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
+                                >
+                                    {savingNewProduct ? <><Loader2 size={16} className="animate-spin" /> Adding...</> : "Add Product"}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

@@ -23,17 +23,34 @@ app.use(cors({
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"]
 }));
+
+// Layer 1: Force Content-Type for POST/PUT in case Netlify CDN strips it
+app.use((req, res, next) => {
+    if ((req.method === "POST" || req.method === "PUT") && req.body === undefined) {
+        const ct = req.headers["content-type"] || "";
+        if (!ct.includes("application/json")) {
+            req.headers["content-type"] = "application/json";
+        }
+    }
+    next();
+});
+
+// Layer 2: Standard JSON parser
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-// Fallback: Netlify/serverless may deliver the body as a raw string.
-// If express.json() didn't parse it, try manually.
+// Layer 3: Final fallback — if body is still a raw string, parse it manually
 app.use((req, res, next) => {
     if (req.body === undefined || (typeof req.body === "string" && req.body.length > 0)) {
-        try {
-            req.body = JSON.parse(req.body || "{}");
-        } catch (e) {
-            req.body = {};
+
+        if (typeof req.body === "string" && req.body.length > 0) {
+
+
+            try {
+                req.body = JSON.parse(req.body || "{}");
+            } catch (e) {
+                req.body = {};
+            }
         }
     }
     next();

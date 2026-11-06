@@ -116,13 +116,160 @@ function filterByMonth(txns, year, month) {
     });
 }
 
-/** Find product column index by product_id or product_name within a given product list */
+/**
+ * Find product column index within a given product list.
+ * Priority:
+ *   1. product_id exact match  (most reliable)
+ *   2. product_name + category match  (handles same-name products in different categories)
+ *   3. product_name-only match  (last resort, keeps backwards-compat)
+ */
 function findProductIndex(products, txn) {
+    // 1. ID match
     let idx = products.findIndex(p => p.id === txn.product_id);
     if (idx >= 0) return idx;
+
     const name = txn.product_name.toLowerCase();
+    const cat = (txn.category || '').toLowerCase();
+
+    // 2. Name + category match (prevents cross-category column mis-assignment)
+    if (cat) {
+        idx = products.findIndex(
+            p => p.name.toLowerCase() === name && p.category.toLowerCase() === cat
+        );
+        if (idx >= 0) return idx;
+    }
+
+    // 3. Name-only fallback
     idx = products.findIndex(p => p.name.toLowerCase() === name);
     return idx;
+}
+
+/**
+ * Extract a common size/diameter prefix from a product name.
+ * e.g. "20mm dia Pipe"  → { prefix: "20mm dia",  type: "Pipe" }
+ *      "255mm dia Elbow" → { prefix: "255mm dia", type: "Elbow" }
+ *      "Socket 22x1/2"  → { prefix: null,         type: "Socket 22x1/2" }
+ * Products with the same non-null prefix will be grouped under one
+ * spanning header cell in the PDF.
+ */
+function extractDiameterPrefix(productName) {
+    if (!productName) return { prefix: null, type: productName };
+    // Match: leading size token like "20mm dia", "255 mm", "1/2 inch dia", "3M"
+    const m = productName.match(
+        /^((?:\d[\d./]*\s*(?:mm|cm|M|inch|"|\'|ft)\s*(?:dia)?)|(?:\d[\d./]*\s*dia))\s+(.+)$/i
+    );
+    if (m) {
+        return { prefix: m[1].trim(), type: m[2].trim() };
+    }
+    return { prefix: null, type: productName };
+}
+
+/**
+ * Re-order products so that all products sharing the same diameter prefix
+ * are placed consecutively (preserving the order of first appearance for
+ * each prefix group, and preserving the original order within each group).
+ *
+ * Example: if the sheet has
+ *   [25mm dia Pipe, 32mm dia Pipe, 25mm dia Elbow, 32mm dia Elbow]
+ * the result will be:
+ *   [25mm dia Pipe, 25mm dia Elbow, 32mm dia Pipe, 32mm dia Elbow]
+ */
+function sortProductsByPrefix(products) {
+    const prefixOrder = [];          // order of first-seen prefixes
+    const prefixGroups = {};         // prefix -> [products]
+
+    for (const p of products) {
+        const { prefix } = extractDiameterPrefix(p.name);
+        // Products without a recognisable prefix each get a unique slot so
+        // they stay in their original relative position.
+        const key = prefix !== null ? prefix : `__solo__${p.id || p.name}`;
+        if (!prefixGroups[key]) {
+            prefixOrder.push(key);
+            prefixGroups[key] = [];
+        }
+        prefixGroups[key].push(p);
+    }
+
+    const sorted = [];
+    for (const key of prefixOrder) {
+        for (const p of prefixGroups[key]) sorted.push(p);
+    }
+    return sorted;
+}
+
+/**
+ * Split a page's products into consecutive groups sharing the same
+ * diameter prefix. Returns [{ start, end, prefix }] (end is exclusive).
+ */
+function getHeaderGroups(productGroup) {
+    const groups = [];
+    let ci = 0;
+    while (ci < productGroup.length) {
+        const { prefix } = extractDiameterPrefix(productGroup[ci].name);
+        let cj = ci + 1;
+        while (
+            cj < productGroup.length && prefix !== null &&
+            extractDiameterPrefix(productGroup[cj].name).prefix === prefix
+        ) cj++;
+        groups.push({ start: ci, end: cj, prefix });
+        ci = cj;
+    }
+    return groups;
+}
+
+/**
+ * Compute a width per product column so each header label fits.
+ * Long names get wider columns, short ones get narrower, and the total
+ * always equals materialAreaW (so the number of products per page does
+ * not change). If it still cannot fit, the header font is reduced
+ * slightly (down to 4.5pt) before columns are squeezed.
+ */
+function computeColumnLayout(doc, productGroup, materialAreaW, typeBandH) {
+    const colCount = productGroup.length;
+    if (colCount === 0) return { widths: [], fontSize: 7 };
+
+    const textLen = typeBandH - 6;  // same as boxLength in drawCell (vertical)
+    const PAD = 6;
+    const MIN_W = 24;               // enough for numbers like "1657"
+    const groups = getHeaderGroups(productGroup);
+
+    const build = (fs) => {
+        const need = productGroup.map(p => {
+            const { type } = extractDiameterPrefix(p.name);
+            doc.font('Helvetica-Bold').fontSize(fs);
+            const textH = doc.heightOfString(String(type || ''), { width: textLen });
+            doc.font('Helvetica-Bold').fontSize(7);
+            const unitW = doc.widthOfString(p.unit || '') + PAD;
+            const idW = doc.widthOfString(p.id || '') + PAD;
+            return Math.max(MIN_W, textH + PAD, unitW, idW);
+        });
+
+        // Make sure the spanning prefix label (e.g. "255mm dia") fits too
+        for (const g of groups) {
+            if (g.prefix === null) continue;
+            doc.font('Helvetica-Bold').fontSize(fs);
+            const prefixNeed = doc.widthOfString(g.prefix) + PAD;
+            let sum = 0;
+            for (let i = g.start; i < g.end; i++) sum += need[i];
+            if (sum < prefixNeed) {
+                const add = (prefixNeed - sum) / (g.end - g.start);
+                for (let i = g.start; i < g.end; i++) need[i] += add;
+            }
+        }
+        return need;
+    };
+
+    const total = (a) => a.reduce((s, v) => s + v, 0);
+
+    let fs = 7;
+    let need = build(fs);
+    while (total(need) > materialAreaW && fs > 4.5) {
+        fs -= 0.5;
+        need = build(fs);
+    }
+
+    const scale = materialAreaW / total(need);
+    return { widths: need.map(w => w * scale), fontSize: fs };
 }
 
 /* ------------------------------------------------------------------ */
@@ -159,10 +306,11 @@ function drawCell(doc, value, x, y, w, h, opts = {}) {
         doc.rotate(-90);
 
         const boxLength = h - 6;
-        doc.text(textVal, -boxLength / 2, -fontSize / 2, {
+        // Wrap across multiple lines and centre the block inside the cell
+        const textH = doc.heightOfString(textVal, { width: boxLength });
+        doc.text(textVal, -boxLength / 2, -textH / 2, {
             width: boxLength,
             align: opts.align || 'left',
-            lineBreak: false,
         });
         doc.restore();
     } else if (opts.align === 'left') {
@@ -187,7 +335,7 @@ function drawCell(doc, value, x, y, w, h, opts = {}) {
 /*  DRAW PAGE HEADER (Title + Table Header with Product Columns)       */
 /* ------------------------------------------------------------------ */
 
-function drawPageHeader(doc, productGroup, pageNum, totalPages, logoPath) {
+function drawPageHeader(doc, productGroup, productStartIndex, pageNum, totalPages, logoPath) {
     const left = MARGIN;
     const right = PAGE_WIDTH - MARGIN;
     const contentWidth = right - left;
@@ -197,12 +345,24 @@ function drawPageHeader(doc, productGroup, pageNum, totalPages, logoPath) {
     const descW = 170;
     const leftColsW = dateW + descW;
     const materialAreaW = contentWidth - leftColsW;
-    const matColW = colCount > 0 ? materialAreaW / colCount : 40;
 
     const headerRowH = 90;
     const unitRowH = 15;
     const numRowH = 15;
     const subHeaderH = 15;
+    const groupBandH = 22;   // height of the diameter-group spanning row
+    const typeBandH = headerRowH - groupBandH; // remaining height for type names
+
+    // Per-column widths based on header text length (total = materialAreaW)
+    const { widths: colWidths, fontSize: hdrFont } =
+        computeColumnLayout(doc, productGroup, materialAreaW, typeBandH);
+
+    const colX = [];
+    let acc = left + leftColsW;
+    for (let i = 0; i < colCount; i++) {
+        colX.push(acc);
+        acc += colWidths[i];
+    }
 
     let y = MARGIN;
 
@@ -249,28 +409,40 @@ function drawPageHeader(doc, productGroup, pageNum, totalPages, logoPath) {
     const tableTop = y + 50;
     y = tableTop;
 
-    // --- Row 1: "Description of Material" & Vertical Product Names ---
+    // --- Row 1: "Description of Material" + 2-level grouped product headers ---
     drawCell(doc, 'Description of Material', left, y, leftColsW, headerRowH, {
         bold: true, fontSize: 8.5, align: 'center',
     });
 
-    let mx = left + leftColsW;
-    for (let i = 0; i < colCount; i++) {
-        drawCell(doc, productGroup[i].name, mx, y, matColW, headerRowH, {
-            vertical: true, fontSize: 7, bold: true, align: 'left',
+    for (const g of getHeaderGroups(productGroup)) {
+        const gx = colX[g.start];
+        const gw = colX[g.end - 1] + colWidths[g.end - 1] - gx;
+        const isSpan = g.prefix !== null && (g.end - g.start) > 1;
+
+        // Group-label band (diameter prefix, spanning all columns of the group)
+        drawCell(doc, g.prefix || '', gx, y, gw, groupBandH, {
+            bold: true, fontSize: hdrFont, align: 'center',
+            fill: isSpan ? '#E3F2FD' : undefined,
         });
-        mx += matColW;
+
+        // Individual product-type names, vertical, in the lower band
+        for (let k = g.start; k < g.end; k++) {
+            const label = g.prefix !== null
+                ? extractDiameterPrefix(productGroup[k].name).type
+                : productGroup[k].name;
+            drawCell(doc, label, colX[k], y + groupBandH, colWidths[k], typeBandH, {
+                vertical: true, fontSize: hdrFont, bold: true, align: 'left',
+            });
+        }
     }
     y += headerRowH;
 
     // --- Row 2: Units ---
     drawCell(doc, '', left, y, leftColsW, unitRowH, { fontSize: 7 });
-    mx = left + leftColsW;
     for (let i = 0; i < colCount; i++) {
-        drawCell(doc, productGroup[i].unit, mx, y, matColW, unitRowH, {
+        drawCell(doc, productGroup[i].unit, colX[i], y, colWidths[i], unitRowH, {
             bold: true, fontSize: 7, align: 'center',
         });
-        mx += matColW;
     }
     y += unitRowH;
 
@@ -279,12 +451,10 @@ function drawPageHeader(doc, productGroup, pageNum, totalPages, logoPath) {
     drawCell(doc, `(${category})`, left, y, leftColsW, numRowH, {
         bold: true, fontSize: 8, align: 'center',
     });
-    mx = left + leftColsW;
     for (let i = 0; i < colCount; i++) {
-        drawCell(doc, productGroup[i].id || String(i + 1), mx, y, matColW, numRowH, {
+        drawCell(doc, String(productStartIndex + i + 1), colX[i], y, colWidths[i], numRowH, {
             bold: true, fontSize: 6.5, align: 'center',
         });
-        mx += matColW;
     }
     y += numRowH;
 
@@ -292,21 +462,19 @@ function drawPageHeader(doc, productGroup, pageNum, totalPages, logoPath) {
     drawCell(doc, 'Date', left, y, dateW, subHeaderH, { bold: true, fontSize: 7.5, align: 'center' });
     drawCell(doc, 'Description', left + dateW, y, descW, subHeaderH, { bold: true, fontSize: 7.5, align: 'center' });
 
-    mx = left + leftColsW;
     for (let i = 0; i < colCount; i++) {
-        drawCell(doc, '', mx, y, matColW, subHeaderH, { fontSize: 7 });
-        mx += matColW;
+        drawCell(doc, '', colX[i], y, colWidths[i], subHeaderH, { fontSize: 7 });
     }
     y += subHeaderH;
 
-    return { y, matColW, dateW, descW, leftColsW };
+    return { y, colWidths, colX, dateW, descW, leftColsW };
 }
 
 /* ------------------------------------------------------------------ */
 /*  DRAW PAGE FOOTER (Page Total + Page Balance rows)                  */
 /* ------------------------------------------------------------------ */
 
-function drawPageFooter(doc, colCount, matColW, dateW, descW, leftColsW, pageTotal, pageBalance) {
+function drawPageFooter(doc, colCount, colWidths, colX, dateW, descW, leftColsW, pageTotal, pageBalance) {
     const left = MARGIN;
     const footerRowH = 18;
     const footerReservedH = footerRowH * 2 + 8;
@@ -321,13 +489,11 @@ function drawPageFooter(doc, colCount, matColW, dateW, descW, leftColsW, pageTot
         bold: true, fontSize: 8, color: '#000000', align: 'left', fill: '#F0F0F0', lineWidth: 0.75
     });
 
-    let mx = left + leftColsW;
     for (let i = 0; i < colCount; i++) {
         const val = pageTotal[i] !== 0 ? String(pageTotal[i]) : '0';
-        drawCell(doc, val, mx, footerY, matColW, footerRowH, {
+        drawCell(doc, val, colX[i], footerY, colWidths[i], footerRowH, {
             bold: true, fontSize: 8, color: '#000000', align: 'center', fill: '#F0F0F0', lineWidth: 0.75
         });
-        mx += matColW;
     }
 
     // --- Page Balance Row ---
@@ -339,13 +505,11 @@ function drawPageFooter(doc, colCount, matColW, dateW, descW, leftColsW, pageTot
         bold: true, fontSize: 8, color: redColor, align: 'left', fill: '#E8F5E9', lineWidth: 0.75
     });
 
-    mx = left + leftColsW;
     for (let i = 0; i < colCount; i++) {
         const val = pageBalance[i] !== 0 ? String(pageBalance[i]) : '0';
-        drawCell(doc, val, mx, balanceY, matColW, footerRowH, {
+        drawCell(doc, val, colX[i], balanceY, colWidths[i], footerRowH, {
             bold: true, fontSize: 8, color: redColor, align: 'center', fill: '#E8F5E9', lineWidth: 0.75
         });
-        mx += matColW;
     }
 }
 
@@ -363,7 +527,7 @@ function drawProductGroupPages(doc, allProducts, productGroup, productStartIndex
     const redColor = '#CC0000';
 
     // Draw page header
-    let { y, matColW, dateW, descW, leftColsW } = drawPageHeader(doc, productGroup, pageNum, totalPages, logoPath);
+    let { y, colWidths, colX, dateW, descW, leftColsW } = drawPageHeader(doc, productGroup, productStartIndex, pageNum, totalPages, logoPath);
 
     /* --- Compute previous balance for this group's products --- */
     const prevBalance = new Array(colCount).fill(0);
@@ -391,13 +555,11 @@ function drawProductGroupPages(doc, allProducts, productGroup, productStartIndex
         bold: true, fontSize: 8, color: redColor, align: 'left', lineWidth: 0.75
     });
 
-    let mx = left + leftColsW;
     for (let i = 0; i < colCount; i++) {
         const val = prevBalance[i];
-        drawCell(doc, String(val), mx, y, matColW, dataRowH, {
+        drawCell(doc, String(val), colX[i], y, colWidths[i], dataRowH, {
             bold: true, fontSize: 8, color: redColor, align: 'center', lineWidth: 0.75
         });
-        mx += matColW;
     }
     y += dataRowH;
 
@@ -444,21 +606,19 @@ function drawProductGroupPages(doc, allProducts, productGroup, productStartIndex
                 pageTotal[i] = totalReceived[i] - totalIssued[i];
                 pageBalance[i] = prevBalance[i] + totalReceived[i] - totalIssued[i];
             }
-            drawPageFooter(doc, colCount, matColW, dateW, descW, leftColsW, pageTotal, pageBalance);
+            drawPageFooter(doc, colCount, colWidths, colX, dateW, descW, leftColsW, pageTotal, pageBalance);
             doc.addPage({ size: 'A4', layout: 'landscape', margin: MARGIN });
-            const header = drawPageHeader(doc, productGroup, pageNum, totalPages, logoPath);
+            const header = drawPageHeader(doc, productGroup, productStartIndex, pageNum, totalPages, logoPath);
             y = header.y;
         }
 
         drawCell(doc, '', left, y, dateW, dataRowH, { fontSize: 7.5, align: 'center' });
         drawCell(doc, 'Opening stock', left + dateW, y, descW, dataRowH, { fontSize: 7.5, align: 'left' });
-        mx = left + leftColsW;
         for (let i = 0; i < colCount; i++) {
             const val = openingQty[i] !== 0 ? String(openingQty[i]) : '';
-            drawCell(doc, val, mx, y, matColW, dataRowH, {
+            drawCell(doc, val, colX[i], y, colWidths[i], dataRowH, {
                 fontSize: 8, bold: Boolean(val), align: 'center',
             });
-            mx += matColW;
         }
         y += dataRowH;
     }
@@ -501,11 +661,11 @@ function drawProductGroupPages(doc, allProducts, productGroup, productStartIndex
                 pageTotal[i] = totalReceived[i] - totalIssued[i];
                 pageBalance[i] = prevBalance[i] + totalReceived[i] - totalIssued[i];
             }
-            drawPageFooter(doc, colCount, matColW, dateW, descW, leftColsW, pageTotal, pageBalance);
+            drawPageFooter(doc, colCount, colWidths, colX, dateW, descW, leftColsW, pageTotal, pageBalance);
 
             // New page with same product group
             doc.addPage({ size: 'A4', layout: 'landscape', margin: MARGIN });
-            const header = drawPageHeader(doc, productGroup, pageNum, totalPages, logoPath);
+            const header = drawPageHeader(doc, productGroup, productStartIndex, pageNum, totalPages, logoPath);
             y = header.y;
         }
 
@@ -556,13 +716,11 @@ function drawProductGroupPages(doc, allProducts, productGroup, productStartIndex
         });
 
         // Draw Product quantity cells
-        mx = left + leftColsW;
         for (let i = 0; i < colCount; i++) {
             const val = group.qtys[i] !== 0 ? String(group.qtys[i]) : '';
-            drawCell(doc, val, mx, y, matColW, dataRowH, {
+            drawCell(doc, val, colX[i], y, colWidths[i], dataRowH, {
                 fontSize: 8, fill: rowFill, bold: isReceived || Boolean(val), color: textColor, align: 'center',
             });
-            mx += matColW;
         }
 
         y += dataRowH;
@@ -572,10 +730,8 @@ function drawProductGroupPages(doc, allProducts, productGroup, productStartIndex
     while (y + dataRowH <= maxY) {
         drawCell(doc, '', left, y, dateW, dataRowH, { fontSize: 7.5 });
         drawCell(doc, '', left + dateW, y, descW, dataRowH, { fontSize: 7.5 });
-        mx = left + leftColsW;
         for (let i = 0; i < colCount; i++) {
-            drawCell(doc, '', mx, y, matColW, dataRowH, { fontSize: 7.5 });
-            mx += matColW;
+            drawCell(doc, '', colX[i], y, colWidths[i], dataRowH, { fontSize: 7.5 });
         }
         y += dataRowH;
     }
@@ -587,7 +743,7 @@ function drawProductGroupPages(doc, allProducts, productGroup, productStartIndex
         pageTotal[i] = totalReceived[i] - totalIssued[i];
         pageBalance[i] = prevBalance[i] + totalReceived[i] - totalIssued[i];
     }
-    drawPageFooter(doc, colCount, matColW, dateW, descW, leftColsW, pageTotal, pageBalance);
+    drawPageFooter(doc, colCount, colWidths, colX, dateW, descW, leftColsW, pageTotal, pageBalance);
 }
 
 /* ------------------------------------------------------------------ */
@@ -596,8 +752,8 @@ function drawProductGroupPages(doc, allProducts, productGroup, productStartIndex
 
 /**
  * Generate the Material Consumption Register Form (8) PDF.
- * Products are split across multiple pages (max 10 per page) so each
- * column is wide enough to read.
+ * Products are split across multiple pages (max MAX_PRODUCTS_PER_PAGE per
+ * page). Column widths adjust to the product name length.
  */
 const generateRegisterPDF = (rawProducts = [], rawTransactions = [], options = {}) => {
     return new Promise((resolve, reject) => {
@@ -665,6 +821,9 @@ const generateRegisterPDF = (rawProducts = [], rawTransactions = [], options = {
             doc.on('data', (chunk) => chunks.push(chunk));
             doc.on('end', () => resolve(Buffer.concat(chunks)));
             doc.on('error', reject);
+
+            // Sort so same-prefix products are consecutive (enables 2-level grouped header)
+            products = sortProductsByPrefix(products);
 
             // Split products into groups of MAX_PRODUCTS_PER_PAGE
             const productGroups = [];

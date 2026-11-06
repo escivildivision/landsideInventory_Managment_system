@@ -33,6 +33,18 @@ export async function addProduct(product) {
     });
 }
 
+export async function updateProduct(id, product) {
+    return request(`/products/update/${encodeURIComponent(id)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(product),
+    });
+}
+
+export async function deleteProduct(id) {
+    return request(`/products/delete/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
 // ---- Inventory ----
 export async function fetchInventory() {
     return request("/inventory/get");
